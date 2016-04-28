@@ -1,11 +1,15 @@
 package game
 
 object Dir {
+
   sealed trait Direction
 
   case object North extends Direction
+
   case object West extends Direction
+
   case object East extends Direction
+
   case object South extends Direction
 
   private[this] val dirs = Seq(North, East, South, West)
@@ -14,13 +18,27 @@ object Dir {
   private[this] val last = dirs.last
 
   private[this] def succ(p: Direction): Direction = dirs.dropWhile(_ != p).tail.headOption.getOrElse(first)
+
   private[this] def pred(p: Direction): Direction = dirs.takeWhile(_ != p).lastOption.getOrElse(last)
 
   def turnLeft(p: Direction): Direction = pred(p)
+
   def turnRight(p: Direction): Direction = succ(p)
 }
 
-case class Point(x: Int, y: Int)
+case class Point(x: Int, y: Int) {
+  /**
+    * Return next point coordinates for specified direction
+    * @param d step direction
+    * @return
+    */
+  def step(d: Dir.Direction): Point = d match {
+    case Dir.North => Point(x, y + 1)
+    case Dir.South => Point(x, y - 1)
+    case Dir.East => Point(x + 1, y)
+    case Dir.West => Point(x - 1, y)
+  }
+}
 
 /**
   * Ant prototype
@@ -34,29 +52,16 @@ case class Point(x: Int, y: Int)
   */
 trait Ant {
   def point: Point
+
   def dir: Dir.Direction
+
   def color: java.awt.Color
+
   def move(board: Board): Ant
 }
 
 trait Step {
   def step(p: Point, d: Dir.Direction): Point
-}
-
-trait LAStep extends Step {
-  /**
-    * Return next point coordinates for specified direction
-    *
-    * @param p ant current position
-    * @param d step direction
-    * @return
-    */
-  def step(p: Point, d: Dir.Direction): Point = d match {
-    case Dir.North => Point(p.x, p.y + 1)
-    case Dir.South => Point(p.x, p.y - 1)
-    case Dir.East => Point(p.x + 1, p.y)
-    case Dir.West => Point(p.x - 1, p.y)
-  }
 }
 
 trait Board {
@@ -69,15 +74,15 @@ trait Board {
     * @param p point
     * @param c color
     */
-  def mark(p: Point, c: java.awt.Color)
+  def flip(p: Point, c: java.awt.Color)
 }
 
-case class MapBoard() extends Board {
+case class InfinityBoard() extends Board {
   private[this] var m = Map.empty[Point, java.awt.Color]
 
   override def isMarked(p: Point): Boolean = m.contains(p)
 
-  override def mark(p: Point, c: java.awt.Color): Unit = if (isMarked(p)) m -= p else m += p -> c
+  override def flip(p: Point, c: java.awt.Color): Unit = if (isMarked(p)) m -= p else m += p -> c
 }
 
 /**
@@ -86,7 +91,7 @@ case class MapBoard() extends Board {
   * @param point point on board
   * @param color sign of the ant
   */
-case class ScalaAnt(point: Point, dir: Dir.Direction, color: java.awt.Color) extends Ant with LAStep {
+case class ScalaAnt(point: Point, dir: Dir.Direction, color: java.awt.Color) extends Ant {
   /**
     * move - do one step with following rules:
     * - current point NOT marked - turn 90 left, mark point and make step
@@ -97,8 +102,8 @@ case class ScalaAnt(point: Point, dir: Dir.Direction, color: java.awt.Color) ext
     */
   override def move(board: Board): Ant = {
     val d = if (board.isMarked(point)) Dir.turnRight(dir) else Dir.turnLeft(dir)
-    board.mark(this.point, this.color)
-    val p = step(this.point, d)
+    board.flip(this.point, this.color)
+    val p = point.step(d)
     ScalaAnt(p, d, color)
   }
 }
@@ -109,7 +114,7 @@ case class ScalaAnt(point: Point, dir: Dir.Direction, color: java.awt.Color) ext
   * @param point point on board
   * @param color sign of the ant
   */
-case class MonocleAnt(point: Point, dir: Dir.Direction, color: java.awt.Color) extends Ant with LAStep {
+case class MonocleAnt(point: Point, dir: Dir.Direction, color: java.awt.Color) extends Ant {
   private[this] val pointLens = monocle.Lens[MonocleAnt, Point](_.point)(v => a => a.copy(point = v))
   private[this] val dirLens = monocle.Lens[MonocleAnt, Dir.Direction](_.dir)(v => a => a.copy(dir = v))
 
@@ -123,7 +128,7 @@ case class MonocleAnt(point: Point, dir: Dir.Direction, color: java.awt.Color) e
     */
   override def move(board: Board): Ant = {
     val d = if (board.isMarked(point)) Dir.turnRight(dir) else Dir.turnLeft(dir)
-    board.mark(this.point, this.color)
-    dirLens.set(d)(pointLens.set(step(this.point, d))(this))
+    board.flip(this.point, this.color)
+    pointLens.set(point.step(d))( dirLens.set(d)(this) )
   }
 }
